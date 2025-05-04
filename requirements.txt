@@ -1,6 +1,7 @@
 streamlit
 nltk
 pandas
+gdown
 numpy
 scikit-learn
 spacy
