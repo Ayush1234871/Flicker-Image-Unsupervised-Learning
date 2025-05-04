@@ -1,49 +1,49 @@
 import os
-import gdown
+import re
+import io
+import pickle
+import base64
 import streamlit as st
 import pandas as pd
-import re
-import pickle
 import nltk
-import io
-import base64
 from collections import Counter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 
-# Download model from Google Drive
-file_id = '14a9e2G-DLT5yZLgzqfr9CwaOoLgP4JLi'
-model_url = f'https://drive.google.com/uc?export=download&id={file_id}'
-model_path = 'clustering_pipeline.pkl'
+# Optional: use gdown if you prefer automatic download
+import gdown
 
-if not os.path.exists(model_path):
-    st.info("Downloading model file...")
-    gdown.download(model_url, model_path, quiet=False)
-
-# Validate the downloaded file
-if not os.path.exists(model_path) or os.path.getsize(model_path) < 1000:
-    st.error("Downloaded file seems invalid or corrupted. Please recheck the Google Drive link or file format.")
-    st.stop()
-
-# Load NLTK resources
+# Ensure required NLTK resources are downloaded
 nltk.download('punkt')
 nltk.download('stopwords')
 
-# Load model safely
+# === FILE SETUP ===
+MODEL_FILENAME = "clustering_pipeline.pkl"
+MODEL_URL = "https://drive.google.com/uc?id=14a9e2G-DLT5yZLgzqfr9CwaOoLgP4JLi"
+
+# Try to download model if not already present
+if not os.path.exists(MODEL_FILENAME):
+    try:
+        st.info("Downloading model file...")
+        gdown.download(MODEL_URL, MODEL_FILENAME, quiet=False)
+    except Exception as e:
+        st.error(f"Auto-download failed: {e}")
+
+# === LOAD MODEL ===
 try:
-    with open(model_path, 'rb') as f:
+    with open(MODEL_FILENAME, "rb") as f:
         models = pickle.load(f)
+    vectorizer = models['vectorizer']
+    svd = models['svd']
+    kmeans = models['kmeans']
+    dbscan = models['dbscan']
+    agg = models['agg']
 except Exception as e:
-    st.error(f"Failed to load model: {e}")
+    st.error("Failed to load model. Please ensure 'clustering_pipeline.pkl' is valid and in the app directory.")
     st.stop()
 
-vectorizer = models['vectorizer']
-svd = models['svd']
-kmeans = models['kmeans']
-dbscan = models['dbscan']
-agg = models['agg']
-
+# === SETUP ===
 stop_words = set(stopwords.words('english'))
 ps = PorterStemmer()
 
@@ -61,11 +61,7 @@ def predict_clusters(new_comments):
 
     kmeans_labels = kmeans.predict(X_new_lsa)
     dbscan_labels = dbscan.fit_predict(X_new_lsa)
-
-    if len(new_comments) >= 20:
-        agg_labels = agg.fit_predict(X_new_lsa)
-    else:
-        agg_labels = [-1] * len(new_comments)
+    agg_labels = agg.fit_predict(X_new_lsa) if len(new_comments) >= 20 else [-1] * len(new_comments)
 
     final_labels = []
     for i in range(len(new_comments)):
@@ -76,9 +72,9 @@ def predict_clusters(new_comments):
 
     return final_labels
 
-# Streamlit UI
+# === STREAMLIT UI ===
 st.set_page_config(page_title="Comment Cluster Predictor")
-st.title("Comment Clustering Predictor")
+st.title("🧠 Comment Clustering Predictor")
 
 mode = st.sidebar.radio("Choose input mode", ["Manual Comment", "Upload CSV"])
 
@@ -89,15 +85,16 @@ if mode == "Manual Comment":
         if comment_input.strip():
             sentences = re.split(r'[.!?]+', comment_input)
             sentences = [s.strip() for s in sentences if s.strip()]
-            if sentences:
-                labels = predict_clusters(sentences)
-                temp_df = pd.DataFrame({'comment': sentences, 'cluster': labels})
-                st.success("Prediction complete.")
-                cluster_map = temp_df.groupby("cluster")["comment"].apply(list).to_dict()
-                for cluster_id, comments in sorted(cluster_map.items()):
-                    st.markdown(f"### Cluster {cluster_id}")
-                    for comment in comments:
-                        st.markdown(f"- {comment}")
+            labels = predict_clusters(sentences)
+            temp_df = pd.DataFrame({'comment': sentences, 'cluster': labels})
+
+            st.success("Prediction complete.")
+            cluster_map = temp_df.groupby("cluster")["comment"].apply(list).to_dict()
+
+            for cluster_id, comments in sorted(cluster_map.items()):
+                st.markdown(f"### Cluster {cluster_id}")
+                for comment in comments:
+                    st.markdown(f"- {comment}")
         else:
             st.warning("Please enter at least one comment.")
 
@@ -106,19 +103,24 @@ elif mode == "Upload CSV":
 
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
+
         if "comment" not in df.columns:
             st.error("CSV must contain a 'comment' column.")
         else:
             st.dataframe(df.head())
+
             if st.button("Predict Clusters"):
                 labels = predict_clusters(df["comment"])
                 df["cluster"] = labels
+
                 st.success("Prediction complete.")
                 cluster_map = df.groupby("cluster")["comment"].apply(list).to_dict()
+
                 for cluster_id, comments in sorted(cluster_map.items()):
                     st.markdown(f"### Cluster {cluster_id}")
                     for comment in comments:
                         st.markdown(f"- {comment}")
+
                 csv_buffer = io.StringIO()
                 df.to_csv(csv_buffer, index=False)
                 b64 = base64.b64encode(csv_buffer.getvalue().encode()).decode()
