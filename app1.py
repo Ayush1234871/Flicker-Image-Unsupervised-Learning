@@ -131,7 +131,7 @@ from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 
 # Download model if not exists
-model_url = 'https://drive.google.com/file/d/1yOk8jvxh_jJmZjhdvnuidLedZRLpisHn/view?usp=drive_link'  # Replace with actual file ID
+model_url = 'https://drive.google.com/file/d/14a9e2G-DLT5yZLgzqfr9CwaOoLgP4JLi/view?usp=drive_link'  # Replace with actual file ID
 model_path = 'clustering_pipeline.pkl'
 
 if not os.path.exists(model_path):
