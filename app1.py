@@ -12,23 +12,31 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer
 
-# Correct model URL and path
+# Download model from Google Drive
 file_id = '14a9e2G-DLT5yZLgzqfr9CwaOoLgP4JLi'
-model_url = f'https://drive.google.com/uc?id={file_id}'
+model_url = f'https://drive.google.com/uc?export=download&id={file_id}'
 model_path = 'clustering_pipeline.pkl'
 
-# Download model if not exists
 if not os.path.exists(model_path):
     st.info("Downloading model file...")
     gdown.download(model_url, model_path, quiet=False)
 
-# NLTK setup
+# Validate the downloaded file
+if not os.path.exists(model_path) or os.path.getsize(model_path) < 1000:
+    st.error("Downloaded file seems invalid or corrupted. Please recheck the Google Drive link or file format.")
+    st.stop()
+
+# Load NLTK resources
 nltk.download('punkt')
 nltk.download('stopwords')
 
-# Load model
-with open(model_path, 'rb') as f:
-    models = pickle.load(f)
+# Load model safely
+try:
+    with open(model_path, 'rb') as f:
+        models = pickle.load(f)
+except Exception as e:
+    st.error(f"Failed to load model: {e}")
+    st.stop()
 
 vectorizer = models['vectorizer']
 svd = models['svd']
@@ -81,14 +89,11 @@ if mode == "Manual Comment":
         if comment_input.strip():
             sentences = re.split(r'[.!?]+', comment_input)
             sentences = [s.strip() for s in sentences if s.strip()]
-
             if sentences:
                 labels = predict_clusters(sentences)
                 temp_df = pd.DataFrame({'comment': sentences, 'cluster': labels})
-
                 st.success("Prediction complete.")
                 cluster_map = temp_df.groupby("cluster")["comment"].apply(list).to_dict()
-
                 for cluster_id, comments in sorted(cluster_map.items()):
                     st.markdown(f"### Cluster {cluster_id}")
                     for comment in comments:
@@ -101,24 +106,19 @@ elif mode == "Upload CSV":
 
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
-
         if "comment" not in df.columns:
             st.error("CSV must contain a 'comment' column.")
         else:
             st.dataframe(df.head())
-
             if st.button("Predict Clusters"):
                 labels = predict_clusters(df["comment"])
                 df["cluster"] = labels
-
                 st.success("Prediction complete.")
                 cluster_map = df.groupby("cluster")["comment"].apply(list).to_dict()
-
                 for cluster_id, comments in sorted(cluster_map.items()):
                     st.markdown(f"### Cluster {cluster_id}")
                     for comment in comments:
                         st.markdown(f"- {comment}")
-
                 csv_buffer = io.StringIO()
                 df.to_csv(csv_buffer, index=False)
                 b64 = base64.b64encode(csv_buffer.getvalue().encode()).decode()
